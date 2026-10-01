@@ -1,45 +1,50 @@
-name: glpi
+# GLPI – stack Portainer (hôte debian13-docker, réseau Docker_Net)
+# Les mots de passe sont fournis par les variables d'environnement du stack
+# (Portainer → Stacks → Environment variables, ou "Load variables from .env file"
+# avec stack.env.example rempli). Ne jamais les écrire en clair ici : le dépôt est public.
 
 services:
-  glpi:
-    image: "glpi/glpi:${GLPI_VERSION:-11.0}"
-    container_name: glpi
+  glpi-app:
+    image: glpi/glpi:${GLPI_VERSION:-latest}
+    container_name: GLPI
     restart: unless-stopped
-    env_file: .env
-    environment:
-      TZ: ${TZ:-Europe/Paris}
-    volumes:
-      # config, files, marketplace et logs de GLPI
-      - glpi_data:/var/glpi
-      # Plugins personnalisés (optionnel, décommenter si besoin)
-      # - ./plugins:/var/www/glpi/plugins
-      # Surcharge de la configuration PHP
-      - ./php/custom.ini:/usr/local/etc/php/conf.d/custom.ini:ro
+    networks:
+      - Docker_Net
     depends_on:
-      db:
+      glpi-db:
         condition: service_healthy
     ports:
-      - "${GLPI_HTTP_PORT:-8080}:80"
-
-  db:
-    image: "mariadb:11.4"
-    container_name: glpi-db
-    restart: unless-stopped
+      - ${GLPI_HTTP_PORT:-9461}:80
     environment:
-      TZ: ${TZ:-Europe/Paris}
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MARIADB_DATABASE: ${GLPI_DB_NAME}
-      MARIADB_USER: ${GLPI_DB_USER}
-      MARIADB_PASSWORD: ${GLPI_DB_PASSWORD}
+      - GLPI_DB_HOST=glpi-db
+      - GLPI_DB_PORT=3306
+      - GLPI_DB_NAME=glpi
+      - GLPI_DB_USER=glpi
+      - GLPI_DB_PASSWORD=${GLPI_DB_PASSWORD:?GLPI_DB_PASSWORD manquant}
     volumes:
-      - db_data:/var/lib/mysql
+      - ${GLPI_DATA_DIR:-/volume2/docker/glpi}/data:/var/glpi
+
+  glpi-db:
+    image: mysql:8.4
+    container_name: GLPI-DB
+    restart: unless-stopped
+    networks:
+      - Docker_Net
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD manquant}
+      - MYSQL_DATABASE=glpi
+      - MYSQL_USER=glpi
+      - MYSQL_PASSWORD=${GLPI_DB_PASSWORD:?GLPI_DB_PASSWORD manquant}
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      # $$ : la variable est lue dans le conteneur, pas substituée par Compose
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
       start_period: 30s
+    volumes:
+      - ${GLPI_DATA_DIR:-/volume2/docker/glpi}/db:/var/lib/mysql
 
-volumes:
-  glpi_data:
-  db_data:
+networks:
+  Docker_Net:
+    external: true
