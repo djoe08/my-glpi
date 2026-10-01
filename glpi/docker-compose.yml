@@ -1,0 +1,45 @@
+name: glpi
+
+services:
+  glpi:
+    image: "glpi/glpi:${GLPI_VERSION:-11.0}"
+    container_name: glpi
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      # config, files, marketplace et logs de GLPI
+      - glpi_data:/var/glpi
+      # Plugins personnalisés (optionnel, décommenter si besoin)
+      # - ./plugins:/var/www/glpi/plugins
+      # Surcharge de la configuration PHP
+      - ./php/custom.ini:/usr/local/etc/php/conf.d/custom.ini:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${GLPI_HTTP_PORT:-8080}:80"
+
+  db:
+    image: "mariadb:11.4"
+    container_name: glpi-db
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${GLPI_DB_NAME}
+      MARIADB_USER: ${GLPI_DB_USER}
+      MARIADB_PASSWORD: ${GLPI_DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  glpi_data:
+  db_data:
